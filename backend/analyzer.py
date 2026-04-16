@@ -1,10 +1,23 @@
 import json
 import os
-from groq import AsyncGroq
-from groq.types.chat import ChatCompletionMessageParam
 from typing import List
 
-client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", ""))
+# Import load_dotenv
+from dotenv import load_dotenv
+from groq import AsyncGroq
+from groq.types.chat import ChatCompletionMessageParam
+
+# 1. Explicitly load environment variables so they work even without start.sh
+load_dotenv()
+
+# 2. Remove the global client variable:
+# client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", ""))
+
+# 3. Create a helper to lazily fetch the client
+def get_groq_client() -> AsyncGroq:
+    """Initialize client lazily to bind to the active asyncio event loop."""
+    return AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", ""))
+
 
 ANALYZE_SYSTEM_PROMPT = """You are DebugBrain, an expert AI code debugging assistant with memory of past bugs.
 
@@ -45,6 +58,9 @@ async def analyze_code_with_groq(
     past_bugs: List[dict],
 ) -> dict:
     """Send code to Groq for analysis, injecting past bug memory as context."""
+    
+    # 4. Instantiate the client locally inside the active event loop
+    client = get_groq_client()
 
     past_context = ""
     if past_bugs:
@@ -62,23 +78,20 @@ async def analyze_code_with_groq(
         f"{past_context}\n\nRespond with JSON only."
     )
 
-    # Fix 1: properly typed messages
     messages: List[ChatCompletionMessageParam] = [
         {"role": "system", "content": ANALYZE_SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
     ]
 
     response = await client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
+        model="llama-3.3-70b-versatile",  # <--- Change this line
         messages=messages,
         temperature=0.1,
         max_tokens=2000,
     )
 
-    # Fix 2: .content can be None — use "or" to guarantee a str
     raw: str = (response.choices[0].message.content or "").strip()
 
-    # Strip markdown code fences if present
     if raw.startswith("```"):
         parts = raw.split("```")
         raw = parts[1] if len(parts) > 1 else raw
@@ -108,6 +121,9 @@ async def chat_with_groq(
     past_bugs: List[dict],
 ) -> str:
     """Handle conversational debugging chat with context."""
+    
+    # 5. Instantiate the client locally here as well
+    client = get_groq_client()
 
     past_context = ""
     if past_bugs:
@@ -126,12 +142,10 @@ async def chat_with_groq(
         f"Current code language: {language}"
     )
 
-    # Fix 3: properly typed messages
     messages: List[ChatCompletionMessageParam] = [
         {"role": "system", "content": system_prompt}
     ]
 
-    # Add conversation history — only keep valid roles
     for h in history[-6:]:
         role = h.get("role", "")
         content = h.get("content", "")
@@ -146,11 +160,10 @@ async def chat_with_groq(
     messages.append({"role": "user", "content": user_content})
 
     response = await client.chat.completions.create(
-        model="llama-3.1-70b-versatile",
+        model="llama-3.3-70b-versatile",  # <--- Change this line
         messages=messages,
         temperature=0.3,
         max_tokens=800,
     )
 
-    # Fix 4: .content can be None — return empty string as fallback
     return response.choices[0].message.content or ""

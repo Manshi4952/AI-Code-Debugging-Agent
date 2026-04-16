@@ -23,15 +23,15 @@ memory_manager = MemoryManager()
 class AnalyzeRequest(BaseModel):
     code: str
     language: str
-    user_id: Optional[str] = "default_user"
+    user_id: str = "default_user"
 
 
 class ChatRequest(BaseModel):
     message: str
-    code: Optional[str] = ""
-    language: Optional[str] = "python"
-    user_id: Optional[str] = "default_user"
-    history: Optional[List[dict]] = []
+    code: str = ""
+    language: str = "python"
+    user_id: str = "default_user"
+    history: List[dict] = []
 
 
 @app.get("/")
