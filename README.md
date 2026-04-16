@@ -183,6 +183,4 @@ curl -X POST http://localhost:8000/analyze \
 
 ---
 
-## 📝 License
 
-MIT — free to use, modify, and deploy.
