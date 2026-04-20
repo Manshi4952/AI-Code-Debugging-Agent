@@ -2,13 +2,9 @@
 MemoryManager — persistent bug memory for DebugBrain.
 
 Storage strategy:
-  - Default: JSON file-based storage (works out of the box, no extra API keys)
-  - Production: Swap _store / _search for Hindsight SDK calls (see comments below)
-
-To use Hindsight Cloud:
-  pip install hindsight-sdk
-  Set HINDSIGHT_API_KEY in .env
-  Uncomment the Hindsight sections and comment out the JSON sections.
+  - Default: JSON file-based storage (works out of the box)
+  - Production: Hybrid approach. Auto-detects Hindsight Cloud for vector search
+    while maintaining local JSON for complete history and frequency counting.
 """
 
 import json
@@ -18,10 +14,18 @@ from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
 
-# ── Hindsight import (uncomment when using Hindsight Cloud) ──────────────────
-# from hindsight import Hindsight
-# hindsight_client = Hindsight(api_key=os.environ.get("HINDSIGHT_API_KEY"))
-# ─────────────────────────────────────────────────────────────────────────────
+# Safely auto-detect Hindsight SDK
+try:
+    from hindsight import Hindsight
+    HINDSIGHT_API_KEY = os.environ.get("HINDSIGHT_API_KEY")
+    USE_HINDSIGHT = bool(HINDSIGHT_API_KEY)
+    if USE_HINDSIGHT:
+        hindsight_client = Hindsight(api_key=HINDSIGHT_API_KEY)
+    else:
+        hindsight_client = None
+except ImportError:
+    USE_HINDSIGHT = False
+    hindsight_client = None
 
 MEMORY_DIR = Path("./data/memory")
 HISTORY_DIR = Path("./data/history")
@@ -54,25 +58,11 @@ class MemoryManager:
 
     async def store_bug(self, user_id: str, bug: dict, language: str):
         """Store a detected bug in the user's memory."""
-        # ── Hindsight version ─────────────────────────────────────────────────
-        # await hindsight_client.memory.store(
-        #     user_id=user_id,
-        #     content=json.dumps({
-        #         "error_type": bug.get("error_type"),
-        #         "language": language,
-        #         "cause": bug.get("description"),
-        #         "fix": bug.get("fixed_code"),
-        #         "prevention_tip": bug.get("prevention_tip"),
-        #     }),
-        #     metadata={"language": language, "error_type": bug.get("error_type")}
-        # )
-        # ─────────────────────────────────────────────────────────────────────
-
-        # JSON file version
-        memories = _load_json(_user_memory_path(user_id))
         error_type = bug.get("error_type", "Unknown")
-
-        # Find existing entry to increment frequency
+        now_iso = datetime.utcnow().isoformat()
+        memories = _load_json(_user_memory_path(user_id))
+        
+        # 1. Update local JSON (Required for frequency tracking & UI tables)
         existing = next(
             (m for m in memories
              if m.get("error_type") == error_type and m.get("language") == language),
@@ -81,9 +71,11 @@ class MemoryManager:
 
         if existing:
             existing["frequency"] = existing.get("frequency", 1) + 1
-            existing["last_seen"] = datetime.utcnow().isoformat()
+            existing["last_seen"] = now_iso
             existing["fix"] = bug.get("fixed_code", existing.get("fix"))
+            freq = existing["frequency"]
         else:
+            freq = 1
             memories.append({
                 "id": str(uuid.uuid4()),
                 "error_type": error_type,
@@ -91,14 +83,14 @@ class MemoryManager:
                 "cause": bug.get("description", ""),
                 "fix": bug.get("fixed_code", ""),
                 "prevention_tip": bug.get("prevention_tip", ""),
-                "frequency": 1,
-                "first_seen": datetime.utcnow().isoformat(),
-                "last_seen": datetime.utcnow().isoformat(),
+                "frequency": freq,
+                "first_seen": now_iso,
+                "last_seen": now_iso,
             })
 
         _save_json(_user_memory_path(user_id), memories)
 
-        # Also append to history
+        # 2. Append to debug history
         history = _load_json(_user_history_path(user_id))
         history.insert(0, {
             "id": str(uuid.uuid4()),
@@ -107,33 +99,60 @@ class MemoryManager:
             "title": bug.get("title", error_type),
             "language": language,
             "line_number": bug.get("line_number"),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": now_iso,
             "fixed": True,
         })
-        _save_json(_user_history_path(user_id), history[:100])  # keep last 100
+        _save_json(_user_history_path(user_id), history[:100])
+
+        # 3. Hindsight Cloud Storage (For vectorized semantic search)
+        if USE_HINDSIGHT and hindsight_client:
+            try:
+                await hindsight_client.memory.store(
+                    user_id=user_id,
+                    content=json.dumps({
+                        "error_type": error_type,
+                        "language": language,
+                        "cause": bug.get("description"),
+                        "fix": bug.get("fixed_code"),
+                        "prevention_tip": bug.get("prevention_tip"),
+                        "frequency": freq  # Include frequency for AI context
+                    }),
+                    metadata={"language": language, "error_type": error_type}
+                )
+            except Exception as e:
+                print(f"Hindsight store error: {e}")
 
     async def search_similar_bugs(
-        self,
-        code: str,
-        language: str,
-        user_id: str,
-        top_k: int = 5
+        self, code: str, language: str, user_id: str, top_k: int = 5
     ) -> List[dict]:
         """Search memory for bugs similar to what's in the current code."""
-        # ── Hindsight version ─────────────────────────────────────────────────
-        # results = await hindsight_client.memory.search(
-        #     user_id=user_id,
-        #     query=code[:500],
-        #     top_k=top_k,
-        #     filters={"language": language}
-        # )
-        # return [r.content for r in results]
-        # ─────────────────────────────────────────────────────────────────────
+        
+        # Try Hindsight semantic search first
+        if USE_HINDSIGHT and hindsight_client:
+            try:
+                results = await hindsight_client.memory.search(
+                    user_id=user_id,
+                    query=code[:500],
+                    top_k=top_k,
+                    filters={"language": language}
+                )
+                
+                parsed_results = []
+                for r in results:
+                    try:
+                        # CRITICAL FIX: Parse the stringified JSON back into a dictionary
+                        parsed_results.append(json.loads(r.content))
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+                        
+                if parsed_results:
+                    return parsed_results
+            except Exception as e:
+                print(f"Hindsight search error: {e}. Falling back to JSON.")
 
-        # JSON file version — returns all memories for this language
+        # Fallback to local JSON search
         memories = _load_json(_user_memory_path(user_id))
         lang_memories = [m for m in memories if m.get("language") == language]
-        # Sort by frequency descending so most-recurring patterns surface first
         lang_memories.sort(key=lambda x: x.get("frequency", 1), reverse=True)
         return lang_memories[:top_k]
 
