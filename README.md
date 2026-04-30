@@ -226,6 +226,9 @@ curl -X POST http://localhost:8000/analyze \
 3. Update `frontend/src/utils/api.js` to point to your Render backend URL.
 4. Deploy — Vercel handles everything else automatically.
 
+## 🚀 [Live Demo](https://ai-code-debugging-agent-eight.vercel.app)
+
+
 ---
 
 ## 🤝 Team
