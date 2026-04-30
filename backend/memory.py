@@ -1,10 +1,6 @@
 """
 MemoryManager — persistent bug memory for DebugBrain.
-
-Storage strategy:
-  - Default: JSON file-based storage (works out of the box)
-  - Production: Hybrid approach. Auto-detects Hindsight Cloud for vector search
-    while maintaining local JSON for complete history and frequency counting.
+Final Stable Version: Fixed RecallResult mapping and Async thread safety.
 """
 
 import json
@@ -13,19 +9,29 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
+from fastapi.concurrency import run_in_threadpool
 
 # Safely auto-detect Hindsight SDK
 try:
-    from hindsight import Hindsight
+    from hindsight_client import Hindsight
     HINDSIGHT_API_KEY = os.environ.get("HINDSIGHT_API_KEY")
+    HINDSIGHT_API_URL = os.environ.get("HINDSIGHT_API_URL", "https://api.hindsight.vectorize.io")
+    
     USE_HINDSIGHT = bool(HINDSIGHT_API_KEY)
+    
     if USE_HINDSIGHT:
-        hindsight_client = Hindsight(api_key=HINDSIGHT_API_KEY)
+        hindsight_client = Hindsight(
+            base_url=HINDSIGHT_API_URL,
+            api_key=HINDSIGHT_API_KEY
+        )
+        print("✅ HINDSIGHT CLOUD ENABLED: Memories will be synced to the dashboard.")
     else:
         hindsight_client = None
+        print("⚠️ HINDSIGHT DISABLED: Using local JSON storage only.")
 except ImportError:
     USE_HINDSIGHT = False
     hindsight_client = None
+    print("❌ Hindsight SDK not found. Run: python3 -m pip install hindsight-client")
 
 MEMORY_DIR = Path("./data/memory")
 HISTORY_DIR = Path("./data/history")
@@ -62,7 +68,7 @@ class MemoryManager:
         now_iso = datetime.utcnow().isoformat()
         memories = _load_json(_user_memory_path(user_id))
         
-        # 1. Update local JSON (Required for frequency tracking & UI tables)
+        # 1. Update local JSON
         existing = next(
             (m for m in memories
              if m.get("error_type") == error_type and m.get("language") == language),
@@ -90,7 +96,7 @@ class MemoryManager:
 
         _save_json(_user_memory_path(user_id), memories)
 
-        # 2. Append to debug history
+        # 2. Update History
         history = _load_json(_user_history_path(user_id))
         history.insert(0, {
             "id": str(uuid.uuid4()),
@@ -104,51 +110,48 @@ class MemoryManager:
         })
         _save_json(_user_history_path(user_id), history[:100])
 
-        # 3. Hindsight Cloud Storage (For vectorized semantic search)
+        # 3. Hindsight Cloud Storage (Thread-safe)
         if USE_HINDSIGHT and hindsight_client:
             try:
-                await hindsight_client.memory.store(
-                    user_id=user_id,
-                    content=json.dumps({
-                        "error_type": error_type,
-                        "language": language,
-                        "cause": bug.get("description"),
-                        "fix": bug.get("fixed_code"),
-                        "prevention_tip": bug.get("prevention_tip"),
-                        "frequency": freq  # Include frequency for AI context
-                    }),
-                    metadata={"language": language, "error_type": error_type}
+                content_str = f"Bug: {error_type} in {language}. Cause: {bug.get('description')}. Fix: {bug.get('fixed_code')}"
+                
+                await run_in_threadpool(
+                    hindsight_client.retain, 
+                    bank_id=user_id, 
+                    content=content_str
                 )
+                print(f"🚀 Synced to Hindsight Bank: {user_id}")
             except Exception as e:
-                print(f"Hindsight store error: {e}")
+                print(f"❌ Cloud Sync Failed: {e}")
 
-    async def search_similar_bugs(
-        self, code: str, language: str, user_id: str, top_k: int = 5
-    ) -> List[dict]:
-        """Search memory for bugs similar to what's in the current code."""
-        
-        # Try Hindsight semantic search first
+    async def search_similar_bugs(self, code: str, language: str, user_id: str, top_k: int = 5) -> List[dict]:
+        """Search memory for similar bugs using Hindsight recall."""
         if USE_HINDSIGHT and hindsight_client:
             try:
-                results = await hindsight_client.memory.search(
-                    user_id=user_id,
-                    query=code[:500],
-                    top_k=top_k,
-                    filters={"language": language}
+                query_str = f"Code snippet in {language}: {code[:300]}"
+                
+                # Execute sync recall in a threadpool
+                results = await run_in_threadpool(
+                    hindsight_client.recall, 
+                    bank_id=user_id, 
+                    query=query_str
                 )
                 
-                parsed_results = []
-                for r in results:
-                    try:
-                        # CRITICAL FIX: Parse the stringified JSON back into a dictionary
-                        parsed_results.append(json.loads(r.content))
-                    except (json.JSONDecodeError, AttributeError):
-                        pass
-                        
-                if parsed_results:
-                    return parsed_results
+                # FIX: Properly map RecallResult objects back to a list of dicts
+                if results:
+                    formatted_results = []
+                    for r in results:
+                        formatted_results.append({
+                            "description": r.content,
+                            "error_type": "Retrieved Context",
+                            "language": language,
+                            "fix": "Refer to dashboard nodes"
+                        })
+                    print(f"🧠 Hindsight retrieved {len(formatted_results)} memories.")
+                    return formatted_results[:top_k]
+                    
             except Exception as e:
-                print(f"Hindsight search error: {e}. Falling back to JSON.")
+                print(f"⚠️ Recall error: {e}")
 
         # Fallback to local JSON search
         memories = _load_json(_user_memory_path(user_id))
