@@ -1,21 +1,34 @@
-# 🧠 DebugBrain — AI Code Debugging Agent with Memory
+# 🧠 DebugBrain — AI Code Debugging Agent with Vector Memory
 
-An AI-powered debugging assistant that **remembers your past bugs**, detects recurring patterns, and gives smarter fixes over time. Unlike generic AI tools, DebugBrain becomes a personalized debugging brain for each developer.
+> **DebugBrain** is a next-generation AI-powered debugging assistant that doesn't just find bugs — it *remembers* them. By leveraging a hybrid memory engine combining Local JSON persistence and Hindsight Cloud vector storage, DebugBrain learns your unique coding patterns and delivers personalized, context-aware fixes based on your own debugging history.
+
+---
+
+## 📌 Table of Contents
+
+- [Features](#-features)
+- [Project Structure](#️-project-structure)
+- [Tech Stack](#️-tech-stack)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start-local)
+- [Environment Variables](#️-environment-variables)
+- [Hybrid Memory System](#-hybrid-memory-system)
+- [API Reference](#-api-reference)
+- [Deployment](#-deployment)
+- [Team](#-team)
 
 ---
 
 ## ✨ Features
 
 | Feature | Description |
-|---|---|
-| 🔍 Bug Detection | Detects syntax errors, logic bugs, runtime errors, edge cases |
-| 🛠️ Auto-fix Suggestions | Corrected code with step-by-step explanations |
-| 🧠 Memory Engine | Stores every bug you encounter — persists across sessions |
-| ↻ Recurring Detection | "You made this IndexError 3 times this month" |
-| 💬 AI Chat Assistant | Ask questions about your code in natural language |
-| 📅 Debug Timeline | Full searchable history of past debugging sessions |
-| 🌍 Multi-language | Python, JavaScript, Java, C++ |
-| 📊 Quality Score | Code quality score (1–10) with personalized tips |
+|:---|:---|
+| 🔍 **Vector Memory** | Powered by Hindsight 2.0 to recall similar bugs via semantic search across all your past sessions. |
+| 🛠️ **Auto-Fix Engine** | Generates corrected code with step-by-step logic explanations powered by Groq (Llama 3.1). |
+| 🔁 **Pattern Recognition** | Detects recurring errors and alerts you (e.g., *"This is your 4th `KeyError` this week"*). |
+| 🧵 **Thread-Safe Sync** | Non-blocking cloud synchronization using FastAPI concurrency — zero latency on your UI. |
+| 📊 **Quality Scoring** | Provides a 1–10 code quality score with actionable, prioritized improvement tips. |
+| 📅 **Debug Timeline** | Searchable history of every debugging session, stored locally and synced to the cloud. |
 
 ---
 
@@ -24,163 +37,214 @@ An AI-powered debugging assistant that **remembers your past bugs**, detects rec
 ```
 debugbrain/
 ├── backend/
-│   ├── main.py          # FastAPI app — all API endpoints
-│   ├── analyzer.py      # Groq LLM integration
-│   ├── memory.py        # Bug memory manager (JSON + Hindsight hooks)
-│   ├── requirements.txt
-│   ├── .env.example
-│   └── start.sh
+│   ├── main.py              # FastAPI application & API routing
+│   ├── analyzer.py          # Groq LLM logic & prompt engineering
+│   ├── memory.py            # Hybrid Memory Manager (JSON + Hindsight 2.0)
+│   ├── requirements.txt     # Python dependencies
+│   └── .env                 # API keys and cloud URLs (not committed)
+│
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx              # Root component + state
-│   │   ├── components/
-│   │   │   ├── Header.jsx
-│   │   │   ├── EditorPanel.jsx  # Monaco Editor + language picker
-│   │   │   ├── ResultsPanel.jsx # Tab router
-│   │   │   ├── BugsTab.jsx      # Bug cards with fix suggestions
-│   │   │   └── Tabs.jsx         # Memory, Chat, Timeline tabs
-│   │   ├── utils/api.js         # Backend API calls
-│   │   └── styles/App.css
-│   ├── index.html
-│   ├── package.json
-│   ├── vite.config.js
-│   └── vercel.json
-├── render.yaml          # Render backend deployment config
+│   └── src/
+│       ├── App.jsx           # Application state & core logic
+│       ├── components/       # Monaco Editor & Results panel components
+│       └── utils/api.js      # Axios config for backend communication
+│
 └── README.md
-```
-
----
-
-## 🚀 Quick Start (Local)
-
-### 1. Get a free Groq API key
-Go to [https://console.groq.com](https://console.groq.com) → Sign up → Create API key (free tier is generous).
-
-### 2. Start the backend
-
-```bash
-cd backend
-
-# Copy and fill in your env
-cp .env.example .env
-# Edit .env and paste your GROQ_API_KEY
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create data directories
-mkdir -p data/memory data/history
-
-# Start the server
-uvicorn main:app --reload --port 8000
-```
-
-The API will be live at `http://localhost:8000`.  
-Visit `http://localhost:8000/docs` for the interactive Swagger UI.
-
-### 3. Start the frontend
-
-```bash
-cd frontend
-
-# Copy env
-cp .env.example .env
-
-# Install and run
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000` in your browser.
-
----
-
-## ⚙️ Environment Variables
-
-### Backend (`backend/.env`)
-```
-GROQ_API_KEY=gsk_...          # Required — get from console.groq.com
-HINDSIGHT_API_KEY=...         # Optional — for cloud memory (see below)
-```
-
-### Frontend (`frontend/.env`)
-```
-VITE_API_URL=http://localhost:8000
-```
-
----
-
-## 🧠 Memory System
-
-By default, DebugBrain uses **local JSON file storage** — no extra accounts needed. Bug memory is saved to `backend/data/memory/<user_id>.json`.
-
-### Upgrading to Hindsight Cloud (optional)
-
-For production use with vector search and persistent cloud memory:
-
-1. Sign up at [https://hindsight.dev](https://hindsight.dev) and get an API key
-2. Add to `backend/.env`: `HINDSIGHT_API_KEY=your_key`
-3. In `backend/requirements.txt`, uncomment: `hindsight-sdk`
-4. In `backend/memory.py`, uncomment the Hindsight sections (marked with comments) and comment out the JSON sections
-
----
-
-## 🌐 Deployment
-
-### Backend → Render (free tier)
-
-1. Push your code to GitHub
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your repo, set root directory to `backend`
-4. Add environment variable: `GROQ_API_KEY`
-5. Build command: `pip install -r requirements.txt`
-6. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-
-Or use the included `render.yaml` with Render's Blueprint feature.
-
-### Frontend → Vercel (free tier)
-
-1. Go to [vercel.com](https://vercel.com) → New Project
-2. Connect your repo, set root directory to `frontend`
-3. Add environment variable: `VITE_API_URL=https://your-backend.onrender.com`
-4. Deploy — Vercel auto-detects Vite
-
----
-
-## 🔌 API Reference
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/analyze` | POST | Analyze code for bugs + cross-reference memory |
-| `/chat` | POST | Conversational AI debug assistant |
-| `/memory/{user_id}` | GET | Fetch all stored bug memories |
-| `/history/{user_id}` | GET | Fetch debug timeline |
-| `/memory/{user_id}` | DELETE | Clear all memories for a user |
-
-### Example: Analyze code
-```bash
-curl -X POST http://localhost:8000/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "code": "for i in range(len(arr)+1): print(arr[i])",
-    "language": "python",
-    "user_id": "dev_123"
-  }'
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Tech |
-|---|---|
-| AI / LLM | Groq (`llama-3.1-70b-versatile`) |
-| Memory | JSON files (local) / Hindsight SDK (cloud) |
-| Backend | Python, FastAPI, Uvicorn |
-| Frontend | React 18, Vite |
-| Editor | Monaco Editor (`@monaco-editor/react`) |
-| Deploy | Vercel (frontend) + Render (backend) |
+| Layer | Technology |
+|:---|:---|
+| **LLM** | Llama 3.1 via [Groq](https://console.groq.com) |
+| **Vector Memory** | [Hindsight 2.0](https://hindsight.vectorize.io) |
+| **Local Memory** | JSON flat-file persistence |
+| **Backend** | FastAPI, Uvicorn, Pydantic v2 |
+| **Frontend** | React 18, Vite, Monaco Editor |
+| **Backend Hosting** | [Render](https://render.com) |
+| **Frontend Hosting** | [Vercel](https://vercel.com) |
 
 ---
 
+## ✅ Prerequisites
 
+Make sure you have the following installed before running DebugBrain:
+
+- **Python** 3.9+
+- **Node.js** 18+ and **npm**
+- A **Groq API Key** → [console.groq.com](https://console.groq.com)
+- A **Hindsight API Key** → [hindsight.vectorize.io](https://hindsight.vectorize.io)
+
+---
+
+## 🚀 Quick Start (Local)
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Manshi4952/AI-Code-Debugging-Agent.git
+cd AI-Code-Debugging-Agent
+```
+
+### 2. Configure Environment Variables
+
+Create a `.env` file inside the `backend/` directory:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Then open `backend/.env` and fill in your keys:
+
+```env
+GROQ_API_KEY=gsk_your_groq_key_here
+HINDSIGHT_API_KEY=hsk_your_hindsight_key_here
+HINDSIGHT_API_URL=https://api.hindsight.vectorize.io
+```
+
+### 3. Setup & Run the Backend
+
+```bash
+cd backend
+
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate        # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the FastAPI server
+python3 main.py
+```
+
+The backend will be available at `http://localhost:8000`.
+
+### 4. Setup & Run the Frontend
+
+Open a new terminal:
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+The frontend will be available at `http://localhost:5173`.
+
+---
+
+## ⚙️ Environment Variables
+
+All backend configuration is handled through environment variables. Set these in `backend/.env`:
+
+| Variable | Description | Example |
+|:---|:---|:---|
+| `GROQ_API_KEY` | Your Groq secret key for LLM access | `gsk_...` |
+| `HINDSIGHT_API_KEY` | Your Hindsight Personal Access Token | `hsk_...` |
+| `HINDSIGHT_API_URL` | Hindsight cloud endpoint | `https://api.hindsight.vectorize.io` |
+
+> ⚠️ **Never commit your `.env` file.** It is listed in `.gitignore` by default.
+
+---
+
+## 🧠 Hybrid Memory System
+
+DebugBrain uses a **dual-layer memory architecture** to ensure your debugging context is always fast, persistent, and intelligent.
+
+```
+                        ┌──────────────────────────┐
+  User submits code ──► │   FastAPI /analyze route  │
+                        └────────────┬─────────────┘
+                                     │
+               ┌─────────────────────┴──────────────────────┐
+               ▼                                             ▼
+  ┌────────────────────────┐              ┌──────────────────────────────┐
+  │  Local Layer (JSON)     │              │  Cloud Layer (Hindsight 2.0)  │
+  │  - Frequency counting   │              │  - Semantic vector search     │
+  │  - UI debug timeline    │              │  - .retain() to store memory  │
+  │  data/memory/<uid>.json │              │  - .recall() to find matches  │
+  └────────────────────────┘              └──────────────────────────────┘
+```
+
+**Layer 1 — Local JSON:**
+High-speed persistence used for frequency counting (pattern detection) and rendering the debug timeline in the UI. Stored at `data/memory/<user_id>.json`.
+
+**Layer 2 — Hindsight 2.0 (Vector DB):**
+Enables semantic search across all past debug sessions. The AI can surface matches like: *"I remember you had a similar `NullPointerException` in a different project two weeks ago..."*
+
+**Thread Safety:**
+The memory engine uses `fastapi.concurrency.run_in_threadpool` to ensure cloud uploads are always non-blocking, keeping API responses snappy regardless of cloud latency.
+
+---
+
+## 🔌 API Reference
+
+Base URL (local): `http://localhost:8000`
+
+| Endpoint | Method | Description |
+|:---|:---|:---|
+| `/analyze` | `POST` | Submit code for analysis. Syncs to Hindsight and recalls semantically similar past fixes. |
+| `/history/{user_id}` | `GET` | Fetch the visual debug timeline for a specific user. |
+| `/memories/{user_id}` | `GET` | Retrieve the most frequent bug patterns from the user's memory bank. |
+| `/clear/{user_id}` | `DELETE` | Wipe all local and cloud memory for a user — clean slate mode. |
+
+### Example Request — `/analyze`
+
+```bash
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_123",
+    "code": "def divide(a, b):\n    return a / b\n\ndivide(10, 0)",
+    "language": "python"
+  }'
+```
+
+---
+
+## ☁️ Deployment
+
+### Backend — Render
+
+1. Push your code to GitHub.
+2. Create a new **Web Service** on [Render](https://render.com).
+3. Set the build command to `pip install -r requirements.txt`.
+4. Set the start command to `python3 main.py`.
+5. Add all environment variables (`GROQ_API_KEY`, `HINDSIGHT_API_KEY`, `HINDSIGHT_API_URL`) in the Render dashboard under **Environment**.
+
+### Frontend — Vercel
+
+1. Import the repository on [Vercel](https://vercel.com).
+2. Set the root directory to `frontend/`.
+3. Update `frontend/src/utils/api.js` to point to your Render backend URL.
+4. Deploy — Vercel handles everything else automatically.
+
+---
+
+## 🤝 Team
+
+| Name | Role |
+|:---|:---|
+| **Manshi Kumari Shaw** | Team Leader & Full-Stack Lead |
+| **Nandani** | Contributor |
+| **Laxmi** | Contributor |
+| **Manisha** | Contributor |
+
+---
+
+## 📄 License
+
+This project is open source. Feel free to use, modify, and distribute it. Contributions via pull requests are welcome!
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ by Team DebugBrain</sub>
+</div>
